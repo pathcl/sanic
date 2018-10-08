@@ -1,49 +1,43 @@
-from json import loads as json_loads, dumps as json_dumps
-from sanic import Sanic
-from sanic.response import json, text
-from sanic.utils import sanic_endpoint_test
+from json import dumps as json_dumps
+from sanic.response import text
 
 
 # ------------------------------------------------------------ #
 #  UTF-8
 # ------------------------------------------------------------ #
 
-def test_utf8_query_string():
-    app = Sanic('test_utf8_query_string')
+def test_utf8_query_string(app):
 
     @app.route('/')
     async def handler(request):
         return text('OK')
 
-    request, response = sanic_endpoint_test(app, params=[("utf8", '✓')])
+    request, response = app.test_client.get('/', params=[("utf8", '✓')])
     assert request.args.get('utf8') == '✓'
 
 
-def test_utf8_response():
-    app = Sanic('test_utf8_response')
+def test_utf8_response(app):
 
     @app.route('/')
     async def handler(request):
         return text('✓')
 
-    request, response = sanic_endpoint_test(app)
+    request, response = app.test_client.get('/')
     assert response.text == '✓'
 
 
-def skip_test_utf8_route():
-    app = Sanic('skip_test_utf8_route')
+def skip_test_utf8_route(app):
 
     @app.route('/')
     async def handler(request):
         return text('OK')
 
     # UTF-8 Paths are not supported
-    request, response = sanic_endpoint_test(app, route='/✓', uri='/✓')
+    request, response = app.test_client.get('/✓')
     assert response.text == 'OK'
 
 
-def test_utf8_post_json():
-    app = Sanic('test_utf8_post_json')
+def test_utf8_post_json(app):
 
     @app.route('/')
     async def handler(request):
@@ -52,7 +46,9 @@ def test_utf8_post_json():
     payload = {'test': '✓'}
     headers = {'content-type': 'application/json'}
 
-    request, response = sanic_endpoint_test(app, data=json_dumps(payload), headers=headers)
+    request, response = app.test_client.get(
+        '/',
+        data=json_dumps(payload), headers=headers)
 
     assert request.json.get('test') == '✓'
     assert response.text == 'OK'

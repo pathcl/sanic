@@ -1,17 +1,13 @@
-from json import loads as json_loads, dumps as json_dumps
-from sanic import Sanic
 from sanic.request import Request
-from sanic.response import json, text, HTTPResponse
-from sanic.utils import sanic_endpoint_test
+from sanic.response import text, HTTPResponse
+from sanic.exceptions import NotFound
 
 
 # ------------------------------------------------------------ #
 #  GET
 # ------------------------------------------------------------ #
 
-def test_middleware_request():
-    app = Sanic('test_middleware_request')
-
+def test_middleware_request(app):
     results = []
 
     @app.middleware
@@ -22,15 +18,13 @@ def test_middleware_request():
     async def handler(request):
         return text('OK')
 
-    request, response = sanic_endpoint_test(app)
+    request, response = app.test_client.get('/')
 
     assert response.text == 'OK'
     assert type(results[0]) is Request
 
 
-def test_middleware_response():
-    app = Sanic('test_middleware_response')
-
+def test_middleware_response(app):
     results = []
 
     @app.middleware('request')
@@ -46,16 +40,35 @@ def test_middleware_response():
     async def handler(request):
         return text('OK')
 
-    request, response = sanic_endpoint_test(app)
+    request, response = app.test_client.get('/')
 
     assert response.text == 'OK'
     assert type(results[0]) is Request
     assert type(results[1]) is Request
-    assert issubclass(type(results[2]), HTTPResponse)
+    assert isinstance(results[2], HTTPResponse)
 
 
-def test_middleware_override_request():
-    app = Sanic('test_middleware_override_request')
+def test_middleware_response_exception(app):
+    result = {'status_code': None}
+
+    @app.middleware('response')
+    async def process_response(request, response):
+        result['status_code'] = response.status
+        return response
+
+    @app.exception(NotFound)
+    async def error_handler(request, exception):
+        return text('OK', exception.status_code)
+
+    @app.route('/')
+    async def handler(request):
+        return text('FAIL')
+
+    request, response = app.test_client.get('/page_not_found')
+    assert response.text == 'OK'
+    assert result['status_code'] == 404
+
+def test_middleware_override_request(app):
 
     @app.middleware
     async def halt_request(request):
@@ -65,14 +78,13 @@ def test_middleware_override_request():
     async def handler(request):
         return text('FAIL')
 
-    response = sanic_endpoint_test(app, gather_request=False)
+    response = app.test_client.get('/', gather_request=False)
 
     assert response.status == 200
     assert response.text == 'OK'
 
 
-def test_middleware_override_response():
-    app = Sanic('test_middleware_override_response')
+def test_middleware_override_response(app):
 
     @app.middleware('response')
     async def process_response(request, response):
@@ -82,7 +94,44 @@ def test_middleware_override_response():
     async def handler(request):
         return text('FAIL')
 
-    request, response = sanic_endpoint_test(app)
+    request, response = app.test_client.get('/')
 
     assert response.status == 200
     assert response.text == 'OK'
+
+
+def test_middleware_order(app):
+    order = []
+
+    @app.middleware('request')
+    async def request1(request):
+        order.append(1)
+
+    @app.middleware('request')
+    async def request2(request):
+        order.append(2)
+
+    @app.middleware('request')
+    async def request3(request):
+        order.append(3)
+
+    @app.middleware('response')
+    async def response1(request, response):
+        order.append(6)
+
+    @app.middleware('response')
+    async def response2(request, response):
+        order.append(5)
+
+    @app.middleware('response')
+    async def response3(request, response):
+        order.append(4)
+
+    @app.route('/')
+    async def handler(request):
+        return text('OK')
+
+    request, response = app.test_client.get('/')
+
+    assert response.status == 200
+    assert order == [1,2,3,4,5,6]
